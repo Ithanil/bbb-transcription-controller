@@ -33,6 +33,30 @@ if (config.get('gladia.proxy.enabled')) {
   runGladiaProxy();
 }
 
+let WHISPER_PROXY_PROCESS;
+const runWhisperProxy = () => {
+  const outputFile = config.get('log.whisperProxy');
+
+  const outputStream = fs.createWriteStream(outputFile);
+
+  outputStream.on('open', () => {
+    // Spawn the child process
+    WHISPER_PROXY_PROCESS = fork('whisper-proxy.js', [], {
+      stdio: [null, outputStream, outputStream, 'ipc']
+    });
+
+    WHISPER_PROXY_PROCESS.on('exit', (code, signal) => {
+      Logger.info(`Closing Whisper proxy code: ${code} signal: ${signal}`);
+    });
+  });
+
+  Logger.info("Starting Whisper proxy");
+};
+
+if (config.get('whisper.proxy.enabled')) {
+  runWhisperProxy();
+}
+
 const { tryParseJSON }  = require('./lib/utils');
 
 const EventEmitter = require('events').EventEmitter;
@@ -56,7 +80,7 @@ bbbGW.on('UserSpeechLocaleChangedEvtMsg', (header, payload) => {
   const { meetingId, userId } = header;
   const { provider, locale } = payload;
 
-  if (!['gladia', 'vosk', ''].includes(provider)) {
+  if (!['gladia', 'vosk', 'whisper', ''].includes(provider)) {
     Logger.warn("Speech not changed, invalid provider " + userId + ' ' + provider + ' ' + locale);
     return;
   }
@@ -156,7 +180,7 @@ const getServerUrl = (userId, cb) => {
     getUserLocale(userId, (err, locale) => {
 
       if (provider && provider != '' && locale && locale != '') {
-        const serverUrl = config.get(provider === 'gladia' ? 'gladia.server' : provider + '.servers.' + locale);
+        const serverUrl = config.get(provider === 'gladia' ? 'gladia.server' : (provider === 'whisper' ? 'whisper.server' : provider + '.servers.' + locale));
 
         return cb(serverUrl, provider, locale);
       } else {
@@ -245,6 +269,12 @@ const startAudioFork = (channelId, userId) => {
           initialMessage.partialUtterances = partialUtterances;
           initialMessage.minUtteranceLength = minUtteranceLength;
           initialMessage.transcription_hint = config.get(provider + '.hint');
+        }
+        if (provider === 'whisper') {
+          initialMessage.sample_rate = parseInt(SAMPLE_RATE + '000')
+          initialMessage.language = language == 'auto' ? language : language.slice(0,2);
+          initialMessage.partialUtterances = partialUtterances;
+          initialMessage.minUtteranceLength = minUtteranceLength;
         }
 
         if (!socketStatus[channelId]) {
@@ -368,6 +398,10 @@ const exitCleanup = () => {
   if (GLADIA_PROXY_PROCESS) {
     Logger.info('Killing gladia proxy');
     GLADIA_PROXY_PROCESS.kill('SIGINT');
+  }
+  if (WHISPER_PROXY_PROCESS) {
+    Logger.info('Killing Whisper proxy');
+    WHISPER_PROXY_PROCESS.kill('SIGINT');
   }
   setTimeout(() => process.exit(), 1000);
 }

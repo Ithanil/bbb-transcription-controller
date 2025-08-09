@@ -3,6 +3,7 @@ log:
   level: info
   stdout: true
   gladiaProxy: /var/log/bigbluebutton/gladia-proxy.log
+  whisperProxy: /var/log/bigbluebutton/whisper-proxy.log
 
 redis:
   host: 0.0.0.0
@@ -63,6 +64,15 @@ whispering:
   startMessage: '{"config": { "sample_rate": ""} }'
   endMessage: '{"eof" : 1 }'
   server:  wss://HOST/whispering
+
+whisper:
+  apiKey: ${OPENAI_API_KEY}
+  startMessage: '{"type": "session.update", "session": {"turn_detection": {"type": "server_vad"}}}'
+  endMessage: '{"type": "session.interrupt"}'
+  server: ws://localhost:8778
+  proxy:
+    enabled: true
+    address: wss://api.openai.com/v1/realtime
 
 # Setup freeswitch credentials to make ESL work
 
